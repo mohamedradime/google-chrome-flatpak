@@ -1,0 +1,58 @@
+# GitHub Actions Workflow to Build and Deploy the Google Chrome Flatpak
+#
+# Description:
+# This workflow is triggered automatically upon the successful completion of the
+# 'Check for Chrome Updates' workflow. It checks out the newly committed manifest,
+# builds the Flatpak package, adds it to a repository structure, and deploys
+# that repository to GitHub Pages for public consumption.
+#
+name: 'Build and Deploy Google Chrome Flatpak'
+
+on:
+  workflow_run:
+    workflows: ["Update Google Chrome from RPM Repository"] # This MUST match the 'name' of the first workflow
+    types:
+      - completed
+    branches:
+      - main # Or your default branch name
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    # This job only runs if the triggering workflow was successful
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: read # Read permission to checkout the code
+      pages: write    # Write permission to deploy to GitHub Pages
+      id-token: write # Required for OIDC token authentication with GitHub Pages
+
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Dependencies'
+        run: sudo apt-get update && sudo apt-get install -y flatpak-builder
+
+      - name: 'Build Flatpak into Repository'
+        run: |
+          # Install the necessary runtime and SDK for the build
+          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y flathub org.freedesktop.Platform/x86_64/23.08 org.freedesktop.Sdk/x86_64/23.08
+
+          # Initialize the repository directory using the manifest committed by the previous workflow
+          flatpak build-export repo com.google.Chrome.yaml
+
+          # Build the manifest and put the result into the 'repo' directory
+          flatpak-builder --repo=repo --force-clean build-dir com.google.Chrome.yaml
+
+      - name: 'Setup Pages'
+        uses: actions/configure-pages@v4
+
+      - name: 'Upload Repository as Artifact'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./repo # Upload the 'repo' directory
+
+      - name: 'Deploy to GitHub Pages'
+        id: deployment
+        uses: actions/deploy-pages@v4
