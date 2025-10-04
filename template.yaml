@@ -95,9 +95,9 @@ modules:
         # URL now points to a specific version of Chrome.
         # To update, change the version number in the URL and update the sha256 below.
         # From https://dl.google.com/linux/chrome/rpm/stable/x86_64/
-        url: https://dl.google.com/linux/chrome/rpm/stable/x86_64/google-chrome-stable-$VERSION.x86_64.rpm
+        url: https://dl.google.com/linux/chrome/rpm/stable/x86_64/$FILENAME
         dest-filename: google-chrome.rpm
         # IMPORTANT: This SHA256 checksum corresponds to the version in the URL.
         # It must be updated whenever the version is changed.
         # You can get the new checksum by downloading the file and running 'sha256sum <filename>'.
-        sha256: '$HASH' # <-- Placeholder SHA256 for $VERSION
+        sha256: '$CHECKSUM' # <-- Placeholder SHA256 for $VERSION
