@@ -36,8 +36,10 @@ jobs:
       - name: 'Build Flatpak into Repository'
         run: |
           # Install the necessary runtime and SDK for the build
-          flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install -y flathub org.freedesktop.Platform/x86_64/23.08 org.freedesktop.Sdk/x86_64/23.08
+          # Add the --user flag to all flatpak commands to avoid permission errors.
+          # This ensures remotes and runtimes are installed for the local user, not system-wide.
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform/x86_64/23.08 org.freedesktop.Sdk/x86_64/23.08
 
           # Initialize the repository directory using the manifest committed by the previous workflow
           flatpak build-export repo com.google.Chrome.yaml
