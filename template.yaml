@@ -60,44 +60,49 @@ modules:
   - name: google-chrome
     buildsystem: simple
     build-commands:
-      # --- Installation Script ---
-      # 1. Extract the RPM contents without installing it system-wide.
-      # FIX: Use the absolute path to rpm2cpio to avoid PATH issues inside
-      # the flatpak-builder sandbox environment.
-      - /usr/bin/rpm2cpio google-chrome.rpm | cpio -idmvr
+      # 1. Extract the .deb archive using 'ar', which is part of the standard SDK.
+      - ar x google-chrome.deb
 
-      # 2. Move the application files to the standard Flatpak directory /app.
-      # The Chrome files are located in /opt/google/chrome within the archive.
+      # 2. Extract the data payload, which is usually compressed with xz or zstd.
+      # This command robustly handles either compression format.
+      - |
+        if [ -f data.tar.zst ]; then
+          tar -xf data.tar.zst
+        elif [ -f data.tar.xz ]; then
+          tar -xf data.tar.xz
+        else
+          echo "Error: data.tar archive not found or has unknown compression."
+          exit 1
+        fi
+
+      # 3. Move the application files to the standard Flatpak directory /app.
       - cp -r opt/google/chrome /app/
       - cp -r usr/share/applications /app/share/
       - cp -r usr/share/icons /app/share/
 
-      # 3. Create the executable wrapper script.
-      # This script will be the main command for the Flatpak.
+      # 4. Create the executable wrapper script.
       - |
         install -Dm755 /dev/stdin /app/bin/google-chrome-stable <<'EOF'
         #!/bin/sh
         exec /app/chrome/google-chrome "$@"
         EOF
 
-      # 4. Modify the .desktop file for Flatpak environment compatibility.
+      # 5. Modify the .desktop file for Flatpak environment compatibility.
       - sed -i 's|/usr/bin/google-chrome-stable|google-chrome-stable|g' /app/share/applications/google-chrome.desktop
       - sed -i 's|Exec=/opt/google/chrome/google-chrome|Exec=google-chrome-stable|g' /app/share/applications/google-chrome.desktop
 
-      # 5. Integration: Remove conflicting files from the package.
-      # This is critical to prevent the packaged Chrome from trying to manage
-      # system-wide repositories or its own updates, deferring to Flatpak.
+      # 6. Integration: Remove conflicting files from the package.
       - sudo touch /etc/default/google-chrome
       - rm -f etc/cron.daily/google-chrome
-      - rm -f etc/yum.repos.d/google-chrome.repo
+      - rm -f etc/default/google-chrome
 
     sources:
       - type: file
         # URL now points to a specific version of Chrome.
         # To update, change the version number in the URL and update the sha256 below.
-        # From https://dl.google.com/linux/chrome/rpm/stable/x86_64/
-        url: https://dl.google.com/linux/chrome/rpm/stable/x86_64/$FILENAME
-        dest-filename: google-chrome.rpm
+        # From https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages
+        url: https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/$FILENAME
+        dest-filename: google-chrome.deb
         # IMPORTANT: This SHA256 checksum corresponds to the version in the URL.
         # It must be updated whenever the version is changed.
         # You can get the new checksum by downloading the file and running 'sha256sum <filename>'.
