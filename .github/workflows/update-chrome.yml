@@ -5,7 +5,7 @@
 # and checks for a new version of Google Chrome. If an update is found, it uses
 # the 'template.yaml' to generate a new manifest and commits it to the repository.
 #
-name: 'Update Google Chrome from RPM Repository'
+name: 'Update Google Chrome'
 
 on:
   # Allows you to run this workflow manually from the Actions tab
@@ -26,70 +26,67 @@ jobs:
       - name: 'Checkout Repository'
         uses: actions/checkout@v4
 
-      - name: 'Install Dependencies'
-        run: sudo apt-get update && sudo apt-get install -y xmlstarlet
-
-      - name: 'Fetch and Decompress Repository Metadata'
+      - name: 'Fetch and Parse Debian Packages file'
+        id: parse_package
         run: |
-          curl -sL -o primary.xml.gz https://dl.google.com/linux/chrome/rpm/stable/x86_64/repodata/primary.xml.gz
-          gunzip primary.xml.gz
+          # Download the Packages file from Google's Debian repository
+          curl -sL https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages -o Packages.txt
 
-      - name: 'Parse Metadata for Latest Version'
-        id: parse_meta
-        run: |
-          # Use xmlstarlet to parse the XML file for the 'google-chrome-stable' package.
-          PACKAGE_INFO=$(xmlstarlet sel -t -m "//_:package[_:name='google-chrome-stable']" \
-            -v "_:version/@ver" -o "-" -v "_:version/@rel" -n \
-            -v "_:location/@href" -n \
-            -v "_:checksum[@type='sha256']" -n \
-            primary.xml)
-          
-          VERSION=$(echo "$PACKAGE_INFO" | sed -n '1p')
-          FILENAME=$(echo "$PACKAGE_INFO" | sed -n '2p')
-          CHECKSUM=$(echo "$PACKAGE_INFO" | sed -n '3p')
-          
+          # Use awk to parse the file for the 'google-chrome-stable' package.
+          # RS="" treats each package block (separated by blank lines) as a single record.
+          PACKAGE_INFO=$(awk 'BEGIN{RS=""} /Package: google-chrome-stable/{print}' Packages.txt)
+
+          # Extract the required fields from the package block
+          VERSION=$(echo "$PACKAGE_INFO" | grep '^Version:' | awk '{print $2}')
+          FILENAME=$(echo "$PACKAGE_INFO" | grep '^Filename:' | awk '{print $2}')
+          CHECKSUM=$(echo "$PACKAGE_INFO" | grep '^SHA256:' | awk '{print $2}')
+
           echo "Found Version: $VERSION"
           echo "Found Filename: $FILENAME"
           echo "Found Checksum: $CHECKSUM"
-          
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
-          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
 
-      - name: 'Check for Updates'
-        id: check_updates
+          # Set outputs for subsequent steps
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "filename=${FILENAME}" >> $GITHUB_OUTPUT
+          echo "checksum=${CHECKSUM}" >> $GITHUB_OUTPUT
+
+      - name: 'Check if update is needed'
+        id: check_checksum
         run: |
-          touch CHECKSUM.txt # Ensure file exists
-          OLD_CHECKSUM=$(cat CHECKSUM.txt)
-          NEW_CHECKSUM="${{ steps.parse_meta.outputs.checksum }}"
-          
-          if [ "$OLD_CHECKSUM" = "$NEW_CHECKSUM" ]; then
-            echo "No new version found. Aborting."
-            echo "update_needed=false" >> $GITHUB_OUTPUT
+          # Read the checksum of the currently packaged version
+          CURRENT_CHECKSUM=$(cat CHECKSUM.txt)
+          NEW_CHECKSUM=${{ steps.parse_package.outputs.checksum }}
+
+          if [ "$CURRENT_CHECKSUM" = "$NEW_CHECKSUM" ]; then
+            echo "No new version of Google Chrome found."
+            exit 0 # Exit successfully without doing anything else
           else
-            echo "New version found. Proceeding with update."
-            echo "update_needed=true" >> $GITHUB_OUTPUT
+            echo "New version of Google Chrome found. Continuing..."
           fi
 
       - name: 'Update Manifest and Checksum File'
-        if: steps.check_updates.outputs.update_needed == 'true'
         run: |
-          # Read the template and replace placeholders to generate the final manifest
-          sed -e "s/\$VERSION/${{ steps.parse_meta.outputs.version }}/g" \
-              -e "s/\$FILENAME/${{ steps.parse_meta.outputs.filename }}/g" \
-              -e "s/\$CHECKSUM/${{ steps.parse_meta.outputs.checksum }}/g" \
+          # Update the checksum file with the new version's hash
+          echo "${{ steps.parse_package.outputs.checksum }}" > CHECKSUM.txt
+
+          # Rename the existing manifest to a template if it doesn't exist
+          if [ ! -f template.yaml ]; then
+            mv com.google.Chrome.yaml template.yaml
+          fi
+
+          # Read the template and replace placeholders
+          sed -e "s|\$VERSION|${{ steps.parse_package.outputs.version }}|g" \
+              -e "s|\$FILENAME|${{ steps.parse_package.outputs.filename }}|g" \
+              -e "s|\$CHECKSUM|${{ steps.parse_package.outputs.checksum }}|g" \
               template.yaml > com.google.Chrome.yaml
 
-          # Update the checksum file for the next run
-          echo "${{ steps.parse_meta.outputs.checksum }}" > CHECKSUM.txt
-          echo "Manifest and checksum file updated."
+          echo "Generated com.google.Chrome.yaml"
 
       - name: 'Commit and Push Changes'
-        if: steps.check_updates.outputs.update_needed == 'true'
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           
           git add com.google.Chrome.yaml CHECKSUM.txt
-          git commit -m "Push new version: ${{ steps.parse_meta.outputs.version }}"
+          git commit -m "Push new version: ${{ steps.parse_package.outputs.version }}"
           git push
