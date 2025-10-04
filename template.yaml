@@ -62,8 +62,7 @@ modules:
     build-commands:
       # --- Installation Script ---
       # 1. Extract the RPM contents without installing it system-wide.
-      - ar -x google-chrome.rpm data.tar.xz
-      - tar -xf data.tar.xz
+      - rpm2cpio google-chrome.rpm | cpio -idmv
 
       # 2. Move the application files to the standard Flatpak directory /app.
       # The Chrome files are located in /opt/google/chrome within the archive.
