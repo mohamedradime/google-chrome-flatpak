@@ -62,7 +62,9 @@ modules:
     build-commands:
       # --- Installation Script ---
       # 1. Extract the RPM contents without installing it system-wide.
-      - rpm2cpio google-chrome.rpm | cpio -idmv
+      # FIX: Use the absolute path to rpm2cpio to avoid PATH issues inside
+      # the flatpak-builder sandbox environment.
+      - /usr/bin/rpm2cpio google-chrome.rpm | cpio -idmvr
 
       # 2. Move the application files to the standard Flatpak directory /app.
       # The Chrome files are located in /opt/google/chrome within the archive.
