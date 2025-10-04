@@ -18,6 +18,10 @@ on:
 jobs:
   update-manifest:
     runs-on: ubuntu-latest
+    # Grant write permissions to the repository for the GITHUB_TOKEN.
+    # This is required for the action to commit and push changes.
+    permissions:
+      contents: write
     steps:
       - name: 'Checkout Repository'
         uses: actions/checkout@v4
