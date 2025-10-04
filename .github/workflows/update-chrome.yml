@@ -1,0 +1,91 @@
+# GitHub Actions Workflow to Automatically Update the Google Chrome Flatpak Manifest
+#
+# Description:
+# This workflow runs on a daily schedule, fetches the official RPM repository metadata,
+# and checks for a new version of Google Chrome. If an update is found, it uses
+# the 'template.yaml' to generate a new manifest and commits it to the repository.
+#
+name: 'Update Google Chrome from RPM Repository'
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+  # Runs on a schedule (at 05:00 UTC every day)
+  schedule:
+    - cron: '0 5 * * *'
+
+jobs:
+  update-manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Install Dependencies'
+        run: sudo apt-get update && sudo apt-get install -y xmlstarlet
+
+      - name: 'Fetch and Decompress Repository Metadata'
+        run: |
+          curl -sL -o primary.xml.gz https://dl.google.com/linux/chrome/rpm/stable/x86_64/repodata/primary.xml.gz
+          gunzip primary.xml.gz
+
+      - name: 'Parse Metadata for Latest Version'
+        id: parse_meta
+        run: |
+          # Use xmlstarlet to parse the XML file for the 'google-chrome-stable' package.
+          PACKAGE_INFO=$(xmlstarlet sel -t -m "//_:package[_:name='google-chrome-stable']" \
+            -v "_:version/@ver" -o "-" -v "_:version/@rel" -n \
+            -v "_:location/@href" -n \
+            -v "_:checksum[@type='sha256']" -n \
+            primary.xml)
+          
+          VERSION=$(echo "$PACKAGE_INFO" | sed -n '1p')
+          FILENAME=$(echo "$PACKAGE_INFO" | sed -n '2p')
+          CHECKSUM=$(echo "$PACKAGE_INFO" | sed -n '3p')
+          
+          echo "Found Version: $VERSION"
+          echo "Found Filename: $FILENAME"
+          echo "Found Checksum: $CHECKSUM"
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "checksum=$CHECKSUM" >> $GITHUB_OUTPUT
+
+      - name: 'Check for Updates'
+        id: check_updates
+        run: |
+          touch CHECKSUM.txt # Ensure file exists
+          OLD_CHECKSUM=$(cat CHECKSUM.txt)
+          NEW_CHECKSUM="${{ steps.parse_meta.outputs.checksum }}"
+          
+          if [ "$OLD_CHECKSUM" = "$NEW_CHECKSUM" ]; then
+            echo "No new version found. Aborting."
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version found. Proceeding with update."
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 'Update Manifest and Checksum File'
+        if: steps.check_updates.outputs.update_needed == 'true'
+        run: |
+          # Read the template and replace placeholders to generate the final manifest
+          sed -e "s/\$VERSION/${{ steps.parse_meta.outputs.version }}/g" \
+              -e "s/\$FILENAME/${{ steps.parse_meta.outputs.filename }}/g" \
+              -e "s/\$CHECKSUM/${{ steps.parse_meta.outputs.checksum }}/g" \
+              template.yaml > com.google.Chrome.yaml
+
+          # Update the checksum file for the next run
+          echo "${{ steps.parse_meta.outputs.checksum }}" > CHECKSUM.txt
+          echo "Manifest and checksum file updated."
+
+      - name: 'Commit and Push Changes'
+        if: steps.check_updates.outputs.update_needed == 'true'
+        run: |
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
+          
+          git add com.google.Chrome.yaml CHECKSUM.txt
+          git commit -m "Push new version: ${{ steps.parse_meta.outputs.version }}"
+          git push
