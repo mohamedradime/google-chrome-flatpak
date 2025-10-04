@@ -101,7 +101,7 @@ modules:
         # URL now points to a specific version of Chrome.
         # To update, change the version number in the URL and update the sha256 below.
         # From https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages
-        url: https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/$FILENAME
+        url: https://dl.google.com/linux/chrome/deb/$FILENAME
         dest-filename: google-chrome.deb
         # IMPORTANT: This SHA256 checksum corresponds to the version in the URL.
         # It must be updated whenever the version is changed.
