@@ -80,22 +80,20 @@ finish-args:
 
   # --- Granular Host Configuration Access ---
   # For DNS resolution
-  - --filesystem=/etc/resolv.conf:ro
-  - --filesystem=/etc/hosts:ro
+  # - --filesystem=/etc/resolv.conf:ro
+  # - --filesystem=/etc/hosts:ro
   # For hostname identification
-  - --filesystem=/etc/hostname:ro
+  # - --filesystem=/etc/hostname:ro
   # For the system's trusted SSL/TLS certificate authorities
-  - --filesystem=/etc/ssl/certs:ro
-  - --filesystem=/etc/pki/tls/certs:ro # Fallback for Fedora/RHEL based systems
-
-  # --- ENV ---
-  - --env=GTK_PATH=/app/lib/gtkmodules
+  # - --filesystem=/etc/ssl/certs:ro
+  # - --filesystem=/etc/pki/tls/certs:ro # Fallback for Fedora/RHEL based systems
 
   # For GNOME proxy resolution
   - --filesystem=xdg-run/dconf
   - --filesystem=~/.config/dconf:ro
   - --filesystem=xdg-config/gtk-3.0:ro # Read-only access for GTK theming
   - --talk-name=ca.desrt.dconf
+  - --env=GTK_PATH=/app/lib/gtkmodules
   - --env=DCONF_USER_CONFIG_DIR=.config/dconf
   - --env=GIO_EXTRA_MODULES=/app/lib/gio/modules
   - --env=GSETTINGS_BACKEND=dconf
@@ -107,6 +105,7 @@ modules:
   - name: libsecret
     buildsystem: meson
     config-opts:
+      - --libdir=lib
       - -Dmanpage=false
       - -Dcrypto=disabled
       - -Dvapi=false
@@ -122,7 +121,7 @@ modules:
       - type: archive
         url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.4.tar.xz
         sha256: 163d08d783be6d4ab9a979ceb5a4fecbc1d9660d3c34168c581301cd53912b20
-        x-check-data:
+        x-checker-data:
           type: gnome
           name: libsecret
           stable-only: true
@@ -130,6 +129,7 @@ modules:
   - name: dconf
     buildsystem: meson
     config-opts:
+      - --libdir=lib
       - -Dvapi=false
       - -Dbash_completion=false
       - -Dman=false
