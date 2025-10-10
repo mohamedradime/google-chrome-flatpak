@@ -1,0 +1,140 @@
+#
+# GitHub Actions Workflow: Fully Automated Chrome Flatpak CI/CD
+#
+# Author: Senior Flatpak Packager & Security Analyst
+#
+# Description:
+# This is a unified, end-to-end workflow that performs the following:
+# 1. On a schedule, checks for a new version of the main source (Google Chrome).
+# 2. If, and only if, a new Chrome version is found:
+#    a. Updates all other dependencies using the official Docker container.
+#    b. Commits the updated manifest with a descriptive message.
+#    c. Creates and pushes a new Git tag with the Chrome version.
+#    d. Proceeds to build the Flatpak from the newly tagged commit.
+#    e. Deploys the build to GitHub Pages, merging it into the existing
+#       repository to preserve the full history of all previous builds.
+#
+name: 'Automated Chrome Flatpak CI/CD'
+
+on:
+  workflow_dispatch: # Allows manual triggering
+  schedule:
+    - cron: '0 5 * * *' # Runs daily at 5 AM UTC
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    # Permissions required for committing code and deploying to GitHub Pages
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+
+    steps:
+      - name: 'Checkout Repository'
+        uses: actions/checkout@v4
+
+      - name: 'Fetch and Parse Chrome Debian Repository'
+        id: parse
+        run: |
+          PACKAGE_INFO=$(curl -sL https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages | awk 'BEGIN{RS=""} /Package: google-chrome-stable/{print}')
+          VERSION=$(echo "$PACKAGE_INFO" | grep '^Version:' | awk '{print $2}')
+          CHECKSUM=$(echo "$PACKAGE_INFO" | grep '^SHA26:' | awk '{print $2}')
+
+          echo "Latest Chrome Version Found: $VERSION"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "checksum=${CHECKSUM}" >> $GITHUB_OUTPUT
+
+      - name: 'Check if an update is needed'
+        id: check
+        run: |
+          touch CHECKSUM.txt # Ensure file exists on first run
+          CURRENT_CHECKSUM=$(cat CHECKSUM.txt)
+          LATEST_CHECKSUM=${{ steps.parse.outputs.checksum }}
+          
+          if [ "$CURRENT_CHECKSUM" = "$LATEST_CHECKSUM" ]; then
+            echo "No new version of Google Chrome found. Halting workflow."
+            echo "update=false" >> $GITHUB_OUTPUT
+          else
+            echo "New Chrome version detected (${{ steps.parse.outputs.version }}). Proceeding with update."
+            echo "update=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 'Update ALL Dependencies using flatpak-external-data-checker Docker Container'
+        if: steps.check.outputs.update == 'true'
+        uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        with:
+          # The container's working directory is the repo root.
+          # We pass the update command and manifest path as arguments.
+          args: --update /github/workspace/com.google.Chrome.yaml
+
+      - name: 'Update Checksum File and Manifest'
+        if: steps.check.outputs.update == 'true'
+        run: |
+          echo "${{ steps.parse.outputs.checksum }}" > CHECKSUM.txt
+          # A robust script would use 'sed' here to guarantee the chrome version/sha is updated
+          # but we rely on the checker for this example.
+          echo "Manifest and checksum file updated."
+
+      - name: 'Commit, Tag, and Push Changes'
+        if: steps.check.outputs.update == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          VERSION=${{ steps.parse.outputs.version }}
+          
+          git add com.google.Chrome.yaml CHECKSUM.txt
+          git commit -m "feat: Update Chrome to version ${VERSION}"
+          git tag "${VERSION}"
+          git push
+          git push origin --tags
+
+      # --- BUILD AND DEPLOY PHASE ---
+      # The following steps will only run if a new version was committed and tagged.
+      # We check out the code again at the new tag to ensure a clean, reproducible build.
+
+      - name: 'Checkout code at new tag'
+        if: steps.check.outputs.update == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.parse.outputs.version }}
+
+      - name: 'Install Build Dependencies'
+        if: steps.check.outputs.update == 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.freedesktop.Platform/x86_64/25.08 org.freedesktop.Sdk/x86_64/25.08
+
+      - name: 'Build Flatpak'
+        if: steps.check.outputs.update == 'true'
+        run: |
+          flatpak-builder --repo=repo --force-clean \
+            --subject="Update Chrome to ${{ steps.parse.outputs.version }}" \
+            build-dir com.google.Chrome.yaml
+
+      - name: 'Checkout existing GitHub Pages repository'
+        if: steps.check.outputs.update == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: 'Merge new build into existing repository (Preserve History)'
+        if: steps.ceheck.outputs.update == 'true'
+        run: flatpak build-update-repo --prune gh-pages repo
+
+      - name: 'Setup Pages'
+        if: steps.check.outputs.update == 'true'
+        uses: actions/configure-pages@v4
+
+      - name: 'Upload Repository as Artifact'
+        if: steps.check.outputs.update == 'true'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./gh-pages
+
+      - name: 'Deploy to GitHub Pages'
+        if: steps.check.outputs.update == 'true'
+        uses: actions/deploy-pages@v4
