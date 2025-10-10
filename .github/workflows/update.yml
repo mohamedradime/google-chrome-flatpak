@@ -133,10 +133,10 @@ jobs:
             flatpak build-update-repo --prune gh-pages repo
           else
             echo "No valid gh-pages branch found. Creating new repository for the first run."
-            # The checkout failed or was empty, so we must ensure the directory exists
-            mkdir -p gh-pages
-            # 'build-export' creates a new repository from scratch
-            flatpak build-export gh-pages repo
+            # The 'repo' directory created by flatpak-builder is our new repository.
+            # We simply rename it to 'gh-pages' to be used as the deployment artifact.
+            rm -rf gh-pages
+            mv repo gh-pages
           fi
 
       - name: 'Setup Pages'
