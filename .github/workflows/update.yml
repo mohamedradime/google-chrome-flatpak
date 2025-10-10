@@ -66,7 +66,7 @@ jobs:
         with:
           # The container's working directory is the repo root.
           # We pass the update command and manifest path as arguments.
-          args: --update /github/workspace/com.google.Chrome.yaml
+          args: /github/workspace/com.google.Chrome.yaml
 
       - name: 'Update Checksum File and Manifest'
         if: steps.check.outputs.update == 'true'
