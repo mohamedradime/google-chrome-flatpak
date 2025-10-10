@@ -85,7 +85,7 @@ jobs:
           VERSION=${{ steps.parse.outputs.version }}
           
           git add com.google.Chrome.yaml CHECKSUM.txt
-          git commit -m "feat: Update Chrome to version ${VERSION}"
+          git commit -m "Update Chrome to version ${VERSION}"
           git tag "${VERSION}"
           git push
           git push origin --tags
@@ -114,16 +114,29 @@ jobs:
             --subject="Update Chrome to ${{ steps.parse.outputs.version }}" \
             build-dir com.google.Chrome.yaml
 
-      - name: 'Checkout existing GitHub Pages repository'
+      - name: 'Attempt to checkout existing GitHub Pages repository'
         if: steps.check.outputs.update == 'true'
+        # This step is now allowed to fail without stopping the workflow
+        continue-on-error: true
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           path: gh-pages
 
-      - name: 'Merge new build into existing repository (Preserve History)'
-        if: steps.ceheck.outputs.update == 'true'
-        run: flatpak build-update-repo --prune gh-pages repo
+      - name: 'Create or Update Flatpak Repository'
+        if: steps.check.outputs.update == 'true'
+        run: |
+          # Check if the gh-pages checkout succeeded by looking for the directory
+          if [ -d "gh-pages/.git" ]; then
+            echo "Existing gh-pages branch found. Merging into repository to preserve history."
+            flatpak build-update-repo --prune gh-pages repo
+          else
+            echo "No gh-pages branch found. Creating new repository for the first run."
+            # The checkout failed, so we must create the directory ourselves
+            mkdir -p gh-pages
+            # 'build-export' creates a new repository from scratch
+            flatpak build-export gh-pages repo
+          fi
 
       - name: 'Setup Pages'
         if: steps.check.outputs.update == 'true'
