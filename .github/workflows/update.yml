@@ -39,7 +39,7 @@ jobs:
         run: |
           PACKAGE_INFO=$(curl -sL https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages | awk 'BEGIN{RS=""} /Package: google-chrome-stable/{print}')
           VERSION=$(echo "$PACKAGE_INFO" | grep '^Version:' | awk '{print $2}')
-          CHECKSUM=$(echo "$PACKAGE_INFO" | grep '^SHA26:' | awk '{print $2}')
+          CHECKSUM=$(echo "$PACKAGE_INFO" | grep '^SHA256:' | awk '{print $2}')
 
           echo "Latest Chrome Version Found: $VERSION"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
