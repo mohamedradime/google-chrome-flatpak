@@ -126,13 +126,14 @@ jobs:
       - name: 'Create or Update Flatpak Repository'
         if: steps.check.outputs.update == 'true'
         run: |
-          # Check if the gh-pages checkout succeeded by looking for the directory
-          if [ -d "gh-pages/.git" ]; then
+          # This is the robust check. We look for the essential 'objects' directory,
+          # which is the definitive sign of a valid OSTree/Flatpak repository.
+          if [ -d "gh-pages/objects" ]; then
             echo "Existing gh-pages branch found. Merging into repository to preserve history."
             flatpak build-update-repo --prune gh-pages repo
           else
-            echo "No gh-pages branch found. Creating new repository for the first run."
-            # The checkout failed, so we must create the directory ourselves
+            echo "No valid gh-pages branch found. Creating new repository for the first run."
+            # The checkout failed or was empty, so we must ensure the directory exists
             mkdir -p gh-pages
             # 'build-export' creates a new repository from scratch
             flatpak build-export gh-pages repo
