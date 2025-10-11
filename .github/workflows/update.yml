@@ -134,8 +134,11 @@ jobs:
             mv repo gh-pages
             flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
           fi
-          echo "Signing repository summary file..."
-          flatpak build-sign-summary --gpg-sign="$GPG_KEY_ID" gh-pages
+          # This command uses the underlying OSTree tool to update (-u) and
+          # sign the repository's summary file. This is the robust way to
+          # create the 'summary.asc' file needed for GPG verification.
+          echo "Updating and signing repository summary file..."
+          ostree summary -u --gpg-sign="$GPG_KEY_ID" gh-pages
 
       - name: 'Setup Pages'
         uses: actions/configure-pages@v4
