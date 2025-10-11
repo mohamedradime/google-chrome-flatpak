@@ -101,14 +101,15 @@ jobs:
 
       - name: "Build Flatpak"
         run: |
-          # D-Bus requires a machine-id to start a session bus. We generate one
-          # for this ephemeral CI environment. This is a standard prerequisite
-          # for running flatpak-builder inside a minimal container.
-          dbus-uuidgen --ensure
           VERSION=${{ needs.check_and_update.outputs.version }}
-          # We wrap the main command in 'dbus-run-session' to guarantee that a
-          # message bus is available, which is required by underlying tools
-          # like rofiles-fuse.
+          # --- Step 1: Initialize the D-Bus environment ---
+          # Create the necessary directory for the machine-id file.
+          mkdir -p /var/lib/dbus
+          # Generate the unique machine ID that D-Bus requires to start.
+          dbus-uuidgen --ensure
+          # --- Step 2: Run the build within the session ---
+          # The 'dbus-run-session --' command starts a private D-Bus message
+          # bus and then runs the command that follows it.
           dbus-run-session -- \
             flatpak-builder --repo=repo --force-clean \
             --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
