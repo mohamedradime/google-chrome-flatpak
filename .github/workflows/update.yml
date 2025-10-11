@@ -102,16 +102,12 @@ jobs:
       - name: "Build Flatpak"
         run: |
           VERSION=${{ needs.check_and_update.outputs.version }}
-          # --- Step 1: Initialize the D-Bus environment ---
-          # Create the necessary directory for the machine-id file.
-          mkdir -p /var/lib/dbus
-          # Generate the unique machine ID that D-Bus requires to start.
-          dbus-uuidgen --ensure
-          # --- Step 2: Run the build within the session ---
-          # The 'dbus-run-session --' command starts a private D-Bus message
-          # bus and then runs the command that follows it.
-          dbus-run-session -- \
-            flatpak-builder --repo=repo --force-clean \
+          # The '--disable-rofiles-fuse' flag is the standard and robust way to
+          # run flatpak-builder in a CI/CD environment. It uses a sandboxing
+          # method that does not require a complex D-Bus session, which
+          # avoids the errors related to machine-id.
+          flatpak-builder --repo=repo --force-clean \
+            --disable-rofiles-fuse \
             --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
 
       - name: 'Import GPG Key'
