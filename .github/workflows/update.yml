@@ -43,7 +43,7 @@ jobs:
         id: check
         run: |
           VERSION=${{ steps.repo.outputs.version }}
-          if git ls-remote --tags origin ${VERSION}; then
+          if git ls-remote --exit-code --tags origin ${VERSION}; then
             echo "Tag for version ${VERSION} already exists. No update needed."
             echo "update=false" >> $GITHUB_OUTPUT
           else
@@ -84,7 +84,7 @@ jobs:
       - name: "Check GitHub Pages Branch"
         id: pages
         run: |
-          if git ls-remote --branches origin gh-page; then
+          if git ls-remote --exit-code --branches origin gh-page; then
             echo "GitHub Pages branch already exists."
             echo "exists=true" >> $GITHUB_OUTPUT
           else
