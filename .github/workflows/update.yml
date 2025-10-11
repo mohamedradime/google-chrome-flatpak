@@ -100,6 +100,10 @@ jobs:
           VERSION=${{ needs.check_and_update.outputs.version }}
           flatpak-builder --repo=repo --force-clean --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
 
+      - name: 'Import GPG Key'
+        run: |
+          echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
+
       - name: "GitHub Pages Repository Checkout Attempt"
         continue-on-error: true
         uses: actions/checkout@v4
@@ -108,14 +112,17 @@ jobs:
           path: gh-pages
 
       - name: "Create / Update Flatpak Repository"
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
           if [ -d "gh-pages/objects" ]; then
             echo "Existing gh-pages branch found. Merging into repository to preserve history."
-            flatpak build-update-repo --prune gh-pages repo
+            flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages repo
           else
             echo "No valid gh-pages branch found. Creating new repository for the first run."
             rm -rf gh-pages
             mv repo gh-pages
+            flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
           fi
 
       - name: 'Setup Pages'
