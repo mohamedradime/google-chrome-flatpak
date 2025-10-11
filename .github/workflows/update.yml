@@ -96,11 +96,22 @@ jobs:
     steps:
       - name: "Checkout Repository"
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check_and_update.outputs.version }}
 
       - name: "Build Flatpak"
         run: |
+          # D-Bus requires a machine-id to start a session bus. We generate one
+          # for this ephemeral CI environment. This is a standard prerequisite
+          # for running flatpak-builder inside a minimal container.
+          dbus-uuidgen --ensure
           VERSION=${{ needs.check_and_update.outputs.version }}
-          flatpak-builder --repo=repo --force-clean --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
+          # We wrap the main command in 'dbus-run-session' to guarantee that a
+          # message bus is available, which is required by underlying tools
+          # like rofiles-fuse.
+          dbus-run-session -- \
+            flatpak-builder --repo=repo --force-clean \
+            --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
 
       - name: 'Import GPG Key'
         run: |
