@@ -134,6 +134,8 @@ jobs:
             mv repo gh-pages
             flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
           fi
+          echo "Signing repository summary file..."
+          flatpak build-sign-summary --gpg-sign="$GPG_KEY_ID" gh-pages
 
       - name: 'Setup Pages'
         uses: actions/configure-pages@v4
