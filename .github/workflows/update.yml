@@ -22,133 +22,109 @@ on:
     - cron: '0 5 * * *' # Runs daily at 5 AM UTC
 
 jobs:
-  update:
+  check_and_update:
     runs-on: ubuntu-latest
-    # Permissions required for committing code and deploying to GitHub Pages
-    permissions:
-      contents: write
-      pages: write
-      id-token: write
-
+    outputs:
+      version: ${{ steps.repo.outputs.version }}
+      build: ${{ steps.check.outputs.update }}
     steps:
-      - name: 'Checkout Repository'
+      - name: "Checkout Repository"
         uses: actions/checkout@v4
 
-      - name: 'Fetch and Parse Chrome Debian Repository'
-        id: parse
+      - name: "Fetch Chrome Debian Repository"
+        id: repo
         run: |
           PACKAGE_INFO=$(curl -sL https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages | awk 'BEGIN{RS=""} /Package: google-chrome-stable/{print}')
           VERSION=$(echo "$PACKAGE_INFO" | grep '^Version:' | awk '{print $2}')
           CHECKSUM=$(echo "$PACKAGE_INFO" | grep '^SHA256:' | awk '{print $2}')
-
-          echo "Latest Chrome Version Found: $VERSION"
+          echo "Latest Chrome Version Found: $VERSION ($CHECKSUM)"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "checksum=${CHECKSUM}" >> $GITHUB_OUTPUT
 
-      - name: 'Check if an update is needed'
+      - name: "Check For Updates"
         id: check
         run: |
-          touch CHECKSUM.txt # Ensure file exists on first run
+          touch CHECKSUM.txt
           CURRENT_CHECKSUM=$(cat CHECKSUM.txt)
-          LATEST_CHECKSUM=${{ steps.parse.outputs.checksum }}
-          
+          LATEST_CHECKSUM=${{ steps.repo.outputs.checksum }}
+          echo "Current Checksum: $CURRENT_CHECKSUM"
           if [ "$CURRENT_CHECKSUM" = "$LATEST_CHECKSUM" ]; then
             echo "No new version of Google Chrome found. Halting workflow."
             echo "update=false" >> $GITHUB_OUTPUT
           else
-            echo "New Chrome version detected (${{ steps.parse.outputs.version }}). Proceeding with update."
+            echo "New Chrome version detected (${{ steps.repo.outputs.version }}). Proceeding with update."
             echo "update=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: 'Update ALL Dependencies using flatpak-external-data-checker Docker Container'
+      - name: "Update Manifest"
         if: steps.check.outputs.update == 'true'
         uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
         with:
-          # The container's working directory is the repo root.
-          # We pass the update command and manifest path as arguments.
           args: /github/workspace/com.google.Chrome.yaml
 
-      - name: 'Update Checksum File and Manifest'
+      - name: "Update CHECKSUM.txt"
         if: steps.check.outputs.update == 'true'
         run: |
-          echo "${{ steps.parse.outputs.checksum }}" > CHECKSUM.txt
-          # A robust script would use 'sed' here to guarantee the chrome version/sha is updated
-          # but we rely on the checker for this example.
+          echo "${{ steps.repo.outputs.checksum }}" > CHECKSUM.txt
           echo "Manifest and checksum file updated."
 
-      - name: 'Commit, Tag, and Push Changes'
+      - name: "Commit And Tag The Update"
         if: steps.check.outputs.update == 'true'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          VERSION=${{ steps.parse.outputs.version }}
-          
+          VERSION=${{ steps.repo.outputs.version }}
           git add com.google.Chrome.yaml CHECKSUM.txt
           git commit -m "Update Chrome to version ${VERSION}"
           git tag "${VERSION}"
           git push
           git push origin --tags
 
-      # --- BUILD AND DEPLOY PHASE ---
-      # The following steps will only run if a new version was committed and tagged.
-      # We check out the code again at the new tag to ensure a clean, reproducible build.
-
-      - name: 'Checkout code at new tag'
-        if: steps.check.outputs.update == 'true'
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    needs: check_and_update
+    if: needs.check_and_update.outputs.build == 'true'
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - name: "Checkout Repository"
         uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.parse.outputs.version }}
 
-      - name: 'Install Build Dependencies'
-        if: steps.check.outputs.update == 'true'
+      - name: "Build Flatpak"
         run: |
-          sudo apt-get update && sudo apt-get install -y flatpak-builder
-          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.freedesktop.Platform/x86_64/25.08 org.freedesktop.Sdk/x86_64/25.08
+          VERSION=${{ needs.check_and_update.outputs.version }}
+          flatpak-builder --repo=repo --force-clean --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
 
-      - name: 'Build Flatpak'
-        if: steps.check.outputs.update == 'true'
-        run: |
-          flatpak-builder --repo=repo --force-clean \
-            --subject="Update Chrome to ${{ steps.parse.outputs.version }}" \
-            build-dir com.google.Chrome.yaml
-
-      - name: 'Attempt to checkout existing GitHub Pages repository'
-        if: steps.check.outputs.update == 'true'
-        # This step is now allowed to fail without stopping the workflow
+      - name: "GitHub Pages Repository Checkout Attempt"
         continue-on-error: true
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           path: gh-pages
 
-      - name: 'Create or Update Flatpak Repository'
-        if: steps.check.outputs.update == 'true'
+      - name: "Create / Update Flatpak Repository"
         run: |
-          # This is the robust check. We look for the essential 'objects' directory,
-          # which is the definitive sign of a valid OSTree/Flatpak repository.
           if [ -d "gh-pages/objects" ]; then
             echo "Existing gh-pages branch found. Merging into repository to preserve history."
             flatpak build-update-repo --prune gh-pages repo
           else
             echo "No valid gh-pages branch found. Creating new repository for the first run."
-            # The 'repo' directory created by flatpak-builder is our new repository.
-            # We simply rename it to 'gh-pages' to be used as the deployment artifact.
             rm -rf gh-pages
             mv repo gh-pages
           fi
 
       - name: 'Setup Pages'
-        if: steps.check.outputs.update == 'true'
         uses: actions/configure-pages@v4
 
       - name: 'Upload Repository as Artifact'
-        if: steps.check.outputs.update == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./gh-pages
 
       - name: 'Deploy to GitHub Pages'
-        if: steps.check.outputs.update == 'true'
         uses: actions/deploy-pages@v4
