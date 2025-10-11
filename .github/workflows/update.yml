@@ -24,6 +24,8 @@ on:
 jobs:
   check_and_update:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.repo.outputs.version }}
       build: ${{ steps.check.outputs.update }}
