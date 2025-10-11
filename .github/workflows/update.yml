@@ -4,15 +4,14 @@
 # Author: Senior Flatpak Packager & Security Analyst
 #
 # Description:
-# This is a unified, end-to-end workflow that performs the following:
-# 1. On a schedule, checks for a new version of the main source (Google Chrome).
-# 2. If, and only if, a new Chrome version is found:
-#    a. Updates all other dependencies using the official Docker container.
-#    b. Commits the updated manifest with a descriptive message.
-#    c. Creates and pushes a new Git tag with the Chrome version.
-#    d. Proceeds to build the Flatpak from the newly tagged commit.
-#    e. Deploys the build to GitHub Pages, merging it into the existing
-#       repository to preserve the full history of all previous builds.
+# This workflow automates the entire packaging lifecycle based on Git tags.
+# 1. Checks for a new Chrome version that is not already tagged in the repo.
+# 2. Updates all manifest dependencies.
+# 3. Builds the Flatpak package.
+# 4. If, and only if, the build is successful, it commits the updated manifest
+#    to the 'main' branch and tags that commit with the Chrome version.
+# 5. It then deploys the repository to the 'gh-pages' branch and creates a
+#    separate 'deploy-<version>' tag pointing to the deployment commit.
 #
 name: 'Automated Chrome Flatpak CI/CD'
 
@@ -22,13 +21,11 @@ on:
     - cron: '0 5 * * *' # Runs daily at 5 AM UTC
 
 jobs:
-  check_and_update:
+  check:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     outputs:
       version: ${{ steps.repo.outputs.version }}
-      build: ${{ steps.check.outputs.update }}
+      update: ${{ steps.check.outputs.update }}
     steps:
       - name: "Checkout Repository"
         uses: actions/checkout@v4
@@ -39,114 +36,106 @@ jobs:
           PACKAGE_INFO=$(curl -sL https://dl.google.com/linux/chrome/deb/dists/stable/main/binary-amd64/Packages | awk 'BEGIN{RS=""} /Package: google-chrome-stable/{print}')
           VERSION=$(echo "$PACKAGE_INFO" | grep '^Version:' | awk '{print $2}')
           CHECKSUM=$(echo "$PACKAGE_INFO" | grep '^SHA256:' | awk '{print $2}')
-          echo "Latest Chrome Version Found: $VERSION ($CHECKSUM)"
+          echo "Latest Chrome Version Found: $VERSION"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "checksum=${CHECKSUM}" >> $GITHUB_OUTPUT
 
-      - name: "Check For Updates"
+      - name: "Check For Version Tag"
         id: check
         run: |
-          touch CHECKSUM.txt
-          CURRENT_CHECKSUM=$(cat CHECKSUM.txt)
-          LATEST_CHECKSUM=${{ steps.repo.outputs.checksum }}
-          echo "Current Checksum: $CURRENT_CHECKSUM"
-          if [ "$CURRENT_CHECKSUM" = "$LATEST_CHECKSUM" ]; then
-            echo "No new version of Google Chrome found. Halting workflow."
+          VERSION=${{ steps.repo.outputs.version }}
+          if git ls-remote --tags origin ${VERSION}; then
+            echo "Tag for version ${VERSION} already exists. No update needed."
             echo "update=false" >> $GITHUB_OUTPUT
           else
-            echo "New Chrome version detected (${{ steps.repo.outputs.version }}). Proceeding with update."
+            echo "New version ${VERSION} detected. Proceeding with build."
             echo "update=true" >> $GITHUB_OUTPUT
           fi
 
-      - name: "Update Manifest"
-        if: steps.check.outputs.update == 'true'
-        uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
-        with:
-          args: /github/workspace/com.google.Chrome.yaml
-
-      - name: "Update CHECKSUM.txt"
-        if: steps.check.outputs.update == 'true'
-        run: |
-          echo "${{ steps.repo.outputs.checksum }}" > CHECKSUM.txt
-          echo "Manifest and checksum file updated."
-
-      - name: "Commit And Tag The Update"
-        if: steps.check.outputs.update == 'true'
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          VERSION=${{ steps.repo.outputs.version }}
-          git add com.google.Chrome.yaml CHECKSUM.txt
-          git commit -m "Update Chrome to version ${VERSION}"
-          git tag "${VERSION}"
-          git push
-          git push origin --tags
-
-  build:
+  update:
     runs-on: ubuntu-latest
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
       options: --privileged
-    needs: check_and_update
-    if: needs.check_and_update.outputs.build == 'true'
+    needs: check
+    if: needs.outputs.update == 'true'
     permissions:
       contents: write
-      pages: write
-      id-token: write
     steps:
       - name: "Checkout Repository"
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.check_and_update.outputs.version }}
+          ref: main
 
-      - name: "Build Flatpak"
-        run: |
-          VERSION=${{ needs.check_and_update.outputs.version }}
-          # The '--disable-rofiles-fuse' flag is the standard and robust way to
-          # run flatpak-builder in a CI/CD environment. It uses a sandboxing
-          # method that does not require a complex D-Bus session, which
-          # avoids the errors related to machine-id.
-          flatpak-builder --repo=repo --force-clean \
-            --disable-rofiles-fuse \
-            --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
+      - name: "Update Manifest"
+        uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
+        with:
+          args: /github/workspace/com.google.Chrome.yaml
 
       - name: 'Import GPG Key'
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
 
-      - name: "GitHub Pages Repository Checkout Attempt"
-        continue-on-error: true
+      - name: "Build Flatpak"
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          flatpak-builder --repo=repo --force-clean --disable-rofiles-fuse \
+            --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
+
+      - name: "Check GitHub Pages Branch"
+        id: pages
+        run: |
+          if git ls-remote --branches origin gh-page; then
+            echo "GitHub Pages branch already exists."
+            echo "exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "GitHub Pages branch doesn't exist."
+            echo "exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: "Create GitHub Pages Repository"
+        if: steps.pages.output.exists == 'false'
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: |
+          git clone . gh-pages
+          git switch --orphan gh-pages
+          cp -a repo/. gh-pages
+          flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
+
+      - name: "Checkout GitHub Pages Repository"
+        if: steps.pages.output.exists == 'true'
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           path: gh-pages
 
-      - name: "Create / Update Flatpak Repository"
+      - name: "Update GitHub Pages Repository"
+        if: steps.pages.output.exists == 'true'
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages repo
+
+      - name: "Sign GitHub Pages Repository Summary"
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        run: ostree summary -u --gpg-sign="$GPG_KEY_ID" gh-pages
+
+      - name: "Publish GitHub Pages Repositry"
         run: |
-          if [ -d "gh-pages/objects" ]; then
-            echo "Existing gh-pages branch found. Merging into repository to preserve history."
-            flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages repo
-          else
-            echo "No valid gh-pages branch found. Creating new repository for the first run."
-            rm -rf gh-pages
-            mv repo gh-pages
-            flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
-          fi
-          # This command uses the underlying OSTree tool to update (-u) and
-          # sign the repository's summary file. This is the robust way to
-          # create the 'summary.asc' file needed for GPG verification.
-          echo "Updating and signing repository summary file..."
-          ostree summary -u --gpg-sign="$GPG_KEY_ID" gh-pages
+          cd gh-pages
+          git add .
+          git commit -m "Deploy Chrome version ${VERSION}"
+          git tag "deploy-${VERSION}"
+          git push origin gh-pages
+          git push origin "deploy-${VERSION}"
 
-      - name: 'Setup Pages'
-        uses: actions/configure-pages@v4
-
-      - name: 'Upload Repository as Artifact'
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: ./gh-pages
-
-      - name: 'Deploy to GitHub Pages'
-        uses: actions/deploy-pages@v4
+      - name: "Commit Manifest And Tag Main Branch"
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          VERSION=${{ steps.repo.outputs.version }}
+          git add com.google.Chrome.yaml
+          git commit -m "Update Chrome to version ${VERSION}"
+          git tag "${VERSION}"
+          git push main
+          git push origin "${VERSION}"
