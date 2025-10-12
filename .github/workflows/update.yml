@@ -137,7 +137,6 @@ jobs:
             echo "Title=Google Chrome (Unofficial)";
             echo "Url=${REPO_URL}";
             echo "GPGKey=$(gpg --export $GPG_KEY_ID | base64 | tr -d '\n')";
-            gpg --export --armor "$GPG_KEY_ID"
           } > "gh-pages/chrome.flatpakrepo"
 
       - name: "Configure Git For Deployment"
