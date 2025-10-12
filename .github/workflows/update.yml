@@ -153,4 +153,4 @@ jobs:
           git -C main commit -m "Update Chrome to version ${VERSION}"
           git -C main tag "${VERSION}"
           git -C main push
-          git -C main push "${VERSION}"
+          git -C main push --tags
