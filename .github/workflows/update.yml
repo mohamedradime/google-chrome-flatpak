@@ -108,6 +108,9 @@ jobs:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
           git -C gh-pages switch --orphan gh-pages
+          cp main/.gitattributes gh-pages/
+          git -C gh-pages lfs install
+          git -C gh-pages lfs track "**/objects/**"
           cp -a flat/. gh-pages
           flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
 
@@ -137,20 +140,25 @@ jobs:
       - name: "Publish GitHub Pages Repositry"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          cp main/.gitattributes gh-pages/
-          git -C gh-pages lfs install
-          git -C gh-pages lfs track "**/objects/**"
-          git -C gh-pages add .
-          git -C gh-pages commit -m "Deploy Chrome version ${VERSION}"
+          if [ -z "$(git -C gh-pages status --porcelain)" ];
+            echo "✅ No changes to commit."
+          else
+            git -C gh-pages add .
+            git -C gh-pages commit -m "Deploy Chrome version ${VERSION}"
+            git -C gh-pages push origin gh-pages
+          fi
           git -C gh-pages tag "deploy-${VERSION}"
-          git -C gh-pages push origin gh-pages
           git -C gh-pages push origin "deploy-${VERSION}"
 
       - name: "Commit Manifest And Tag Main Branch"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          git -C main add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
-          git -C main commit -m "Update Chrome to version ${VERSION}"
+          if [ -z "$(git -C gh-pages status --porcelain)" ];
+            echo "✅ No changes to commit."
+          else
+            git -C main add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
+            git -C main commit -m "Update Chrome to version ${VERSION}"
+            git -C main push
+          fi
           git -C main tag "${VERSION}"
-          git -C main push
           git -C main push --tags
