@@ -134,6 +134,7 @@ jobs:
 
       - name: "Publish GitHub Pages Repositry"
         run: |
+          VERSION=${{ needs.check.outputs.version }}
           cp main/.gitattributes gh-pages/
           git -C gh-pages lfs install
           git -C gh-pages lfs track "**/objects/**"
@@ -145,7 +146,7 @@ jobs:
 
       - name: "Commit Manifest And Tag Main Branch"
         run: |
-          VERSION=${{ steps.repo.outputs.version }}
+          VERSION=${{ needs.check.outputs.version }}
           git -C main add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
           git -C main commit -m "Update Chrome to version ${VERSION}"
           git -C main tag "${VERSION}"
