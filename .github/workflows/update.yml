@@ -134,7 +134,7 @@ jobs:
 
       - name: "Publish GitHub Pages Repositry"
         run: |
-          cp .gitattributes gh-pages/
+          cp main/.gitattributes gh-pages/
           git -C gh-pages lfs install
           git -C gh-pages lfs track "**/objects/**"
           git -C gh-pages add .
