@@ -140,7 +140,7 @@ jobs:
       - name: "Publish GitHub Pages Repositry"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          if [ -z "$(git -C gh-pages status --porcelain)" ];
+          if [ -z "$(git -C gh-pages status --porcelain)" ]; then
             echo "✅ No changes to commit."
           else
             git -C gh-pages add .
@@ -153,7 +153,7 @@ jobs:
       - name: "Commit Manifest And Tag Main Branch"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          if [ -z "$(git -C gh-pages status --porcelain)" ];
+          if [ -z "$(git -C main status --porcelain)" ]; then
             echo "✅ No changes to commit."
           else
             git -C main add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
