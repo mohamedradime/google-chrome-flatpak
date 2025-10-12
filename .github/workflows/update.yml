@@ -137,6 +137,8 @@ jobs:
           } > "gh-pages/chrome.flatpakrepo"
 
       - name: "Sign Flatpak Repository Summary"
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages
 
       - name: "Configure Git For Deployment"
