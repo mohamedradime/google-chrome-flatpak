@@ -152,5 +152,5 @@ jobs:
           git -C main add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
           git -C main commit -m "Update Chrome to version ${VERSION}"
           git -C main tag "${VERSION}"
-          git -C main push main
-          git -C main push origin "${VERSION}"
+          git -C main push
+          git -C main push "${VERSION}"
