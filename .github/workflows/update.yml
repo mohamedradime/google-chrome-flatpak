@@ -85,9 +85,11 @@ jobs:
           if git -C main ls-remote --exit-code --branches origin gh-pages; then
             echo "GitHub Pages branch already exists."
             echo "exists=true" >> $GITHUB_OUTPUT
+            echo "flat_dir=gh-pages" >> $GITHUB_OUTPUT
           else
             echo "GitHub Pages branch doesn't exist."
             echo "exists=false" >> $GITHUB_OUTPUT
+            echo "flat_dir=flat" >> $GITHUB_OUTPUT
           fi
 
       - name: "Checkout GitHub Pages Repository For Update"
@@ -114,8 +116,13 @@ jobs:
       - name: "Build Flatpak"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          flatpak-builder --repo=gh-pages --force-clean --disable-rofiles-fuse \
+          FLAT_DIR=${{ steps.pages.outputs.flat_dir }}
+          flatpak-builder --repo="$FLAT_DIR" --force-clean --disable-rofiles-fuse \
             --subject="Update Chrome to ${VERSION}" build-dir main/com.google.Chrome.yaml
+
+      - name: "Merge flat into gh-pages"
+        if: steps.pages.outputs.exists == 'false'
+        run: cp -a flat/. gh-pages
 
       - name: "Create / Update chrome.flatpakrepo"
         env:
