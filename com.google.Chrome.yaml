@@ -15,7 +15,7 @@
 
 app-id: com.google.Chrome
 runtime: org.freedesktop.Platform
-runtime-version: "25.08"
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
 tags:
   - proprietary
@@ -119,8 +119,8 @@ modules:
       - /share/man
     sources:
       - type: archive
-        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.4.tar.xz
-        sha256: 163d08d783be6d4ab9a979ceb5a4fecbc1d9660d3c34168c581301cd53912b20
+        url: https://download.gnome.org/sources/libsecret/0.21/libsecret-0.21.7.tar.xz
+        sha256: 6b452e4750590a2b5617adc40026f28d2f4903de15f1250e1d1c40bfd68ed55e
         x-checker-data:
           type: gnome
           name: libsecret
@@ -139,7 +139,7 @@ modules:
       - ca.desrt.dconf.service
       - dconf.service
       - dconf-service
-      - "*.pc"
+      - '*.pc'
     sources:
       - type: archive
         url: https://download.gnome.org/sources/dconf/0.49/dconf-0.49.0.tar.xz
@@ -193,8 +193,8 @@ modules:
       - install -Dm 644 -t /app/share/metainfo com.google.Chrome.metainfo.xml
     sources:
       - type: file
-        url: https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_141.0.7390.65-1_amd64.deb
-        sha256: 55d8eb7eae7747a68f947de333703ca899e5b1426cea669cfebf8d019a9696ad
+        url: https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_141.0.7390.76-1_amd64.deb
+        sha256: 612bc3748d538dd567f0480a529538716a451210731c4d30e04abbc5905e05c7
         dest-filename: chrome.deb
         only-arches: [x86_64]
         x-checker-data:
