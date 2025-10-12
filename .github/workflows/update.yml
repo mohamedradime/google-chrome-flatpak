@@ -106,7 +106,7 @@ jobs:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
           git -C gh-pages switch --orphan gh-pages
-          cp -a repo/. gh-pages
+          cp -a flat/. gh-pages
           flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
 
       - name: "Checkout GitHub Pages Repository For Update"
@@ -120,7 +120,7 @@ jobs:
         if: steps.pages.outputs.exists == 'true'
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-        run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages repo
+        run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages flat
 
       - name: "Sign GitHub Pages Repository Summary"
         env:
