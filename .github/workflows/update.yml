@@ -79,12 +79,6 @@ jobs:
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
 
-      - name: "Build Flatpak"
-        run: |
-          VERSION=${{ needs.check.outputs.version }}
-          flatpak-builder --repo=flat --force-clean --disable-rofiles-fuse \
-            --subject="Update Chrome to ${VERSION}" build-dir main/com.google.Chrome.yaml
-
       - name: "Check GitHub Pages Branch"
         id: pages
         run: |
@@ -96,36 +90,32 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: "Checkout Repository for GitHub Pages Creation"
+      - name: "Checkout GitHub Pages Repository For Update"
+        if: steps.pages.outputs.exists == 'true'
+        uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: "Checkout Repository For GitHub Pages Creation"
         if: steps.pages.outputs.exists == 'false'
         uses: actions/checkout@v5
         with:
           path: gh-pages
 
-      - name: "Create GitHub Pages Repository"
+      - name: "Init GitHub Pages Repository"
         if: steps.pages.outputs.exists == 'false'
-        env:
-          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
           git -C gh-pages switch --orphan gh-pages
           cp main/.gitattributes gh-pages/
           git -C gh-pages lfs install
           git -C gh-pages lfs track "**/objects/**"
-          cp -a flat/. gh-pages
-          flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
 
-      - name: "Checkout GitHub Pages Repository For Update"
-        if: steps.pages.outputs.exists == 'true'
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          path: gh-pages
-
-      - name: "Update GitHub Pages Repository"
-        if: steps.pages.outputs.exists == 'true'
-        env:
-          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-        run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages flat
+      - name: "Build Flatpak"
+        run: |
+          VERSION=${{ needs.check.outputs.version }}
+          flatpak-builder --repo=gh-pages --force-clean --disable-rofiles-fuse \
+            --subject="Update Chrome to ${VERSION}" build-dir main/com.google.Chrome.yaml
 
       - name: "Create / Update chrome.flatpakrepo"
         env:
@@ -138,6 +128,9 @@ jobs:
             echo "Url=${REPO_URL}";
             echo "GPGKey=$(gpg --export $GPG_KEY_ID | base64 | tr -d '\n')";
           } > "gh-pages/chrome.flatpakrepo"
+
+      - name: "Sign Flatpak Repository Summary"
+        run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages
 
       - name: "Configure Git For Deployment"
         run: |
