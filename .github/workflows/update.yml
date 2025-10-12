@@ -134,6 +134,9 @@ jobs:
 
       - name: "Publish GitHub Pages Repositry"
         run: |
+          cp .gitattributes gh-pages/
+          git -C gh-pages lfs install
+          git -C gh-pages lfs track "**/objects/**"
           git -C gh-pages add .
           git -C gh-pages commit -m "Deploy Chrome version ${VERSION}"
           git -C gh-pages tag "deploy-${VERSION}"
