@@ -127,10 +127,18 @@ jobs:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages flat
 
-      - name: "Sign GitHub Pages Repository Summary"
+      - name: "Create / Update chrome.flatpakrepo"
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-        run: ostree summary -u --gpg-sign="$GPG_KEY_ID" --repo=gh-pages
+        run: |
+          REPO_URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/"
+          {
+            echo "[Flatpak Repo]";
+            echo "Title=Google Chrome (Unofficial)";
+            echo "Url=${REPO_URL}";
+            echo "GPGKey=";
+            gpg --export --armor "$GPG_KEY_ID"
+          } > "gh-pages/chrome.flatpakrepo"
 
       - name: "Configure Git For Deployment"
         run: |
