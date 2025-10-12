@@ -28,7 +28,9 @@ jobs:
       update: ${{ steps.check.outputs.update }}
     steps:
       - name: "Checkout Repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          fetch-tags: 'true'
 
       - name: "Fetch Chrome Debian Repository"
         id: repo
@@ -62,12 +64,14 @@ jobs:
       contents: write
     steps:
       - name: "Checkout Repository"
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
+        with:
+          path: main
 
       - name: "Update Manifest"
         uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
         with:
-          args: /github/workspace/com.google.Chrome.yaml
+          args: /github/workspace/main/com.google.Chrome.yaml
 
       - name: 'Import GPG Key'
         run: |
@@ -76,13 +80,13 @@ jobs:
       - name: "Build Flatpak"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          flatpak-builder --repo=repo --force-clean --disable-rofiles-fuse \
-            --subject="Update Chrome to ${VERSION}" build-dir com.google.Chrome.yaml
+          flatpak-builder --repo=flat --force-clean --disable-rofiles-fuse \
+            --subject="Update Chrome to ${VERSION}" build-dir main/com.google.Chrome.yaml
 
       - name: "Check GitHub Pages Branch"
         id: pages
         run: |
-          if git ls-remote --exit-code --branches origin gh-page; then
+          if git -C main ls-remote --exit-code --branches origin gh-pages; then
             echo "GitHub Pages branch already exists."
             echo "exists=true" >> $GITHUB_OUTPUT
           else
@@ -90,17 +94,22 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: "Checkout Repository for GitHub Pages Creation"
+        if: steps.pages.outputs.exists == 'false'
+        uses: actions/checkout@v5
+        with:
+          path: gh-pages
+
       - name: "Create GitHub Pages Repository"
         if: steps.pages.outputs.exists == 'false'
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
-          git clone . gh-pages
-          git switch --orphan gh-pages
+          git -C gcacheh-pages switch --orphan gh-pages
           cp -a repo/. gh-pages
           flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
 
-      - name: "Checkout GitHub Pages Repository"
+      - name: "Checkout GitHub Pages Repository For Update"
         if: steps.pages.outputs.exists == 'true'
         uses: actions/checkout@v4
         with:
@@ -118,21 +127,23 @@ jobs:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: ostree summary -u --gpg-sign="$GPG_KEY_ID" gh-pages
 
-      - name: "Publish GitHub Pages Repositry"
-        run: |
-          cd gh-pages
-          git add .
-          git commit -m "Deploy Chrome version ${VERSION}"
-          git tag "deploy-${VERSION}"
-          git push origin gh-pages
-          git push origin "deploy-${VERSION}"
-
-      - name: "Commit Manifest And Tag Main Branch"
+      - name: "Configure Git For Deployment"
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: "Publish GitHub Pages Repositry"
+        run: |
+          git -C gh-pages add .
+          git -C gh-pages commit -m "Deploy Chrome version ${VERSION}"
+          git -C gh-pages tag "deploy-${VERSION}"
+          git -C gh-pages push origin gh-pages
+          git -C gh-pages push origin "deploy-${VERSION}"
+
+      - name: "Commit Manifest And Tag Main Branch"
+        run: |
           VERSION=${{ steps.repo.outputs.version }}
-          git add com.google.Chrome.yaml
+          git add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
           git commit -m "Update Chrome to version ${VERSION}"
           git tag "${VERSION}"
           git push main
