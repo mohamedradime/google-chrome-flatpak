@@ -30,6 +30,7 @@ jobs:
       - name: "Checkout Repository"
         uses: actions/checkout@v5
         with:
+          ref: main
           fetch-tags: 'true'
 
       - name: "Fetch Chrome Debian Repository"
@@ -66,12 +67,13 @@ jobs:
       - name: "Checkout Repository"
         uses: actions/checkout@v5
         with:
+          ref: main
           path: main
 
       - name: "Update Manifest"
         uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
         with:
-          args: /github/workspace/main/com.google.Chrome.yaml
+          args: --edit-only /github/workspace/main/com.google.Chrome.yaml
 
       - name: 'Import GPG Key'
         run: |
