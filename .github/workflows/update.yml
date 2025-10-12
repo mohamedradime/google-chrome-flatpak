@@ -63,8 +63,6 @@ jobs:
     steps:
       - name: "Checkout Repository"
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: "Update Manifest"
         uses: docker://ghcr.io/flathub/flatpak-external-data-checker:latest
@@ -93,7 +91,7 @@ jobs:
           fi
 
       - name: "Create GitHub Pages Repository"
-        if: steps.pages.output.exists == 'false'
+        if: steps.pages.outputs.exists == 'false'
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
@@ -103,14 +101,14 @@ jobs:
           flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
 
       - name: "Checkout GitHub Pages Repository"
-        if: steps.pages.output.exists == 'true'
+        if: steps.pages.outputs.exists == 'true'
         uses: actions/checkout@v4
         with:
           ref: gh-pages
           path: gh-pages
 
       - name: "Update GitHub Pages Repository"
-        if: steps.pages.output.exists == 'true'
+        if: steps.pages.outputs.exists == 'true'
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages repo
