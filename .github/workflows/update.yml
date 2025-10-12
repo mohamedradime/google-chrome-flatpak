@@ -105,7 +105,7 @@ jobs:
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
-          git -C gcacheh-pages switch --orphan gh-pages
+          git -C gh-pages switch --orphan gh-pages
           cp -a repo/. gh-pages
           flatpak build-sign --gpg-sign="$GPG_KEY_ID" gh-pages
 
@@ -143,8 +143,8 @@ jobs:
       - name: "Commit Manifest And Tag Main Branch"
         run: |
           VERSION=${{ steps.repo.outputs.version }}
-          git add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
-          git commit -m "Update Chrome to version ${VERSION}"
-          git tag "${VERSION}"
-          git push main
-          git push origin "${VERSION}"
+          git -C main add com.google.Chrome.yaml com.google.Chrome.metainfo.xml
+          git -C main commit -m "Update Chrome to version ${VERSION}"
+          git -C main tag "${VERSION}"
+          git -C main push main
+          git -C main push origin "${VERSION}"
