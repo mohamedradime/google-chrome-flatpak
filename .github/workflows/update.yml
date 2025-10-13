@@ -63,6 +63,8 @@ jobs:
     if: needs.check.outputs.update == 'true'
     permissions:
       contents: write
+      pages: write
+      id-token: write
     steps:
       - name: "Checkout Repository"
         uses: actions/checkout@v5
@@ -153,7 +155,10 @@ jobs:
         with:
           path: ./flatpak
 
-      - name: "Configure Git For Deployment"
+      - name: 'Deploy to GitHub Pages'
+        uses: actions/deploy-pages@v4
+
+      - name: "Configure Git"
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -183,6 +188,3 @@ jobs:
           fi
           git -C main tag "${VERSION}"
           git -C main push --tags
-      
-      - name: 'Deploy to GitHub Pages'
-        uses: actions/deploy-pages@v4
