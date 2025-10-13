@@ -116,6 +116,8 @@ jobs:
           git -C flatpak lfs track "**/objects/**"
 
       - name: "Build Flatpak"
+        env:
+          GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
           VERSION=${{ needs.check.outputs.version }}
           FLAT_DIR=${{ steps.flatpak.outputs.flat_dir }}
