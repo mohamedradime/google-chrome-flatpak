@@ -10,7 +10,7 @@
 # 3. Builds the Flatpak package.
 # 4. If, and only if, the build is successful, it commits the updated manifest
 #    to the 'main' branch and tags that commit with the Chrome version.
-# 5. It then deploys the repository to the 'gh-pages' branch and creates a
+# 5. It then deploys the repository to the 'flatpak' branch and creates a
 #    separate 'deploy-<version>' tag pointing to the deployment commit.
 #
 name: 'Automated Chrome Flatpak CI/CD'
@@ -79,50 +79,52 @@ jobs:
         run: |
           echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --batch --import
 
-      - name: "Check GitHub Pages Branch"
-        id: pages
+      - name: "Check Flatpak Branch"
+        id: flatpak
         run: |
-          if git -C main ls-remote --exit-code --branches origin gh-pages; then
-            echo "GitHub Pages branch already exists."
+          if git -C main ls-remote --exit-code --branches origin flatpak; then
+            echo "Flatpak branch already exists."
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "flat_dir=gh-pages" >> $GITHUB_OUTPUT
+            echo "flat_dir=flatpak" >> $GITHUB_OUTPUT
           else
-            echo "GitHub Pages branch doesn't exist."
+            echo "Flatpak branch doesn't exist."
             echo "exists=false" >> $GITHUB_OUTPUT
             echo "flat_dir=flat" >> $GITHUB_OUTPUT
           fi
 
-      - name: "Checkout GitHub Pages Repository For Update"
-        if: steps.pages.outputs.exists == 'true'
+      - name: "Checkout Flatpak Repository For Update"
+        if: steps.flatpak.outputs.exists == 'true'
         uses: actions/checkout@v5
         with:
-          ref: gh-pages
-          path: gh-pages
+          ref: flatpak
+          path: flatpak
+          fetch-depth: 0
+          lfs: true
 
-      - name: "Checkout Repository For GitHub Pages Creation"
-        if: steps.pages.outputs.exists == 'false'
+      - name: "Checkout Repository For Flatpak Creation"
+        if: steps.flatpak.outputs.exists == 'false'
         uses: actions/checkout@v5
         with:
-          path: gh-pages
+          path: flatpak
 
-      - name: "Init GitHub Pages Repository"
-        if: steps.pages.outputs.exists == 'false'
+      - name: "Init Flatpak Repository"
+        if: steps.flatpak.outputs.exists == 'false'
         run: |
-          git -C gh-pages switch --orphan gh-pages
-          cp main/.gitattributes gh-pages/
-          git -C gh-pages lfs install
-          git -C gh-pages lfs track "**/objects/**"
+          git -C flatpak switch --orphan flatpak
+          cp main/.gitattributes flatpak/
+          git -C flatpak lfs install
+          git -C flatpak lfs track "**/objects/**"
 
       - name: "Build Flatpak"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          FLAT_DIR=${{ steps.pages.outputs.flat_dir }}
-          flatpak-builder --repo="$FLAT_DIR" --force-clean --disable-rofiles-fuse \
+          FLAT_DIR=${{ steps.flatpak.outputs.flat_dir }}
+          flatpak-builder --repo="$FLAT_DIR" --force-clean --disable-rofiles-fuse --gpg-sign="$GPG_KEY_ID" \
             --subject="Update Chrome to ${VERSION}" build-dir main/com.google.Chrome.yaml
 
-      - name: "Merge flat into gh-pages"
-        if: steps.pages.outputs.exists == 'false'
-        run: cp -a flat/. gh-pages
+      - name: "Merge flat into flatpak"
+        if: steps.flatpak.outputs.exists == 'false'
+        run: cp -a flat/. flatpak
 
       - name: "Create / Update chrome.flatpakrepo"
         env:
@@ -134,30 +136,38 @@ jobs:
             echo "Title=Google Chrome (Unofficial)";
             echo "Url=${REPO_URL}";
             echo "GPGKey=$(gpg --export $GPG_KEY_ID | base64 | tr -d '\n')";
-          } > "gh-pages/chrome.flatpakrepo"
+          } > "flatpak/chrome.flatpakrepo"
 
       - name: "Sign Flatpak Repository Summary"
         env:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-        run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune gh-pages
+        run: flatpak build-update-repo --gpg-sign="$GPG_KEY_ID" --prune flatpak
+
+      - name: 'Setup Pages'
+        uses: actions/configure-pages@v4
+
+      - name: 'Upload Repository as Artifact'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./flatpak
 
       - name: "Configure Git For Deployment"
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: "Publish GitHub Pages Repositry"
+      - name: "Publish Flatpak Repositry"
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          if [ -z "$(git -C gh-pages status --porcelain)" ]; then
+          if [ -z "$(git -C flatpak status --porcelain)" ]; then
             echo "✅ No changes to commit."
           else
-            git -C gh-pages add .
-            git -C gh-pages commit -m "Deploy Chrome version ${VERSION}"
-            git -C gh-pages push origin gh-pages
+            git -C flatpak add .
+            git -C flatpak commit -m "Deploy Chrome version ${VERSION}"
+            git -C flatpak push origin flatpak
           fi
-          git -C gh-pages tag "deploy-${VERSION}"
-          git -C gh-pages push origin "deploy-${VERSION}"
+          git -C flatpak tag "deploy-${VERSION}"
+          git -C flatpak push origin "deploy-${VERSION}"
 
       - name: "Commit Manifest And Tag Main Branch"
         run: |
@@ -171,3 +181,6 @@ jobs:
           fi
           git -C main tag "${VERSION}"
           git -C main push --tags
+      
+      - name: 'Deploy to GitHub Pages'
+        uses: actions/deploy-pages@v4
