@@ -87,9 +87,11 @@ jobs:
           if git -C main ls-remote --exit-code --branches origin flatpak; then
             echo "Flatpak branch already exists."
             echo "exists=true" >> $GITHUB_OUTPUT
+            echo "flat_dir=flatpak" >> $GITHUB_OUTPUT
           else
             echo "Flatpak branch doesn't exist."
             echo "exists=false" >> $GITHUB_OUTPUT
+            echo "flat_dir=flat" >> $GITHUB_OUTPUT
           fi
 
       - name: "Checkout Flatpak Repository For Update"
@@ -120,8 +122,13 @@ jobs:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          flatpak-builder --repo=flatpak --force-clean --disable-rofiles-fuse --gpg-sign="$GPG_KEY_ID" \
+          FLAT_DIR=${{ steps.flatpak.outputs.flat_dir }}
+          flatpak-builder --repo="$FLAT_DIR" --force-clean --disable-rofiles-fuse --gpg-sign="$GPG_KEY_ID" \
             --subject="Update Chrome to ${VERSION}" build-dir main/com.google.Chrome.yaml
+
+      - name: "Merge flat into flatpak"
+        if: steps.flatpak.outputs.exists == 'false'
+        run: cp -a flat/. flatpak
 
       - name: "Create / Update chrome.flatpakrepo"
         env:
