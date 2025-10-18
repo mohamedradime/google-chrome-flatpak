@@ -87,11 +87,9 @@ jobs:
           if git -C main ls-remote --exit-code --branches origin flatpak; then
             echo "Flatpak branch already exists."
             echo "exists=true" >> $GITHUB_OUTPUT
-            echo "flat_dir=flatpak" >> $GITHUB_OUTPUT
           else
             echo "Flatpak branch doesn't exist."
             echo "exists=false" >> $GITHUB_OUTPUT
-            echo "flat_dir=flat" >> $GITHUB_OUTPUT
           fi
 
       - name: "Checkout Flatpak Repository For Update"
@@ -113,6 +111,7 @@ jobs:
         if: steps.flatpak.outputs.exists == 'false'
         run: |
           git -C flatpak switch --orphan flatpak
+          git -C flatpak rm -rf .
           cp main/.gitattributes flatpak/
           git -C flatpak lfs install
           git -C flatpak lfs track "**/objects/**"
@@ -122,13 +121,8 @@ jobs:
           GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
         run: |
           VERSION=${{ needs.check.outputs.version }}
-          FLAT_DIR=${{ steps.flatpak.outputs.flat_dir }}
-          flatpak-builder --repo="$FLAT_DIR" --force-clean --disable-rofiles-fuse --gpg-sign="$GPG_KEY_ID" \
+          flatpak-builder --repo=flatpak --force-clean --disable-rofiles-fuse --gpg-sign="$GPG_KEY_ID" \
             --subject="Update Chrome to ${VERSION}" build-dir main/com.google.Chrome.yaml
-
-      - name: "Merge flat into flatpak"
-        if: steps.flatpak.outputs.exists == 'false'
-        run: cp -a flat/. flatpak
 
       - name: "Create / Update chrome.flatpakrepo"
         env:
@@ -141,6 +135,9 @@ jobs:
             echo "Url=${REPO_URL}";
             echo "GPGKey=$(gpg --export $GPG_KEY_ID | base64 | tr -d '\n')";
           } > "flatpak/chrome.flatpakrepo"
+
+      - name: "Ensure ostree refs/remotes directory exists"
+        run: mkdir -p flatpak/refs/remotes
 
       - name: "Sign Flatpak Repository Summary"
         env:
