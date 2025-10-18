@@ -111,7 +111,6 @@ jobs:
         if: steps.flatpak.outputs.exists == 'false'
         run: |
           git -C flatpak switch --orphan flatpak
-          git -C flatpak rm -rf .
           cp main/.gitattributes flatpak/
           git -C flatpak lfs install
           git -C flatpak lfs track "**/objects/**"
